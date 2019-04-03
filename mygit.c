@@ -5,6 +5,7 @@
 #include"mygit.h"
 #include<dirent.h>
 #include"sha1.h"
+#include<assert.h>
 
 #define DBNAME "test.db"
 Respo g_respo;
@@ -79,6 +80,11 @@ void create_tables(){
   char *sql_create_File = "CREATE TABLE IF NOT EXISTS File(" \
                            "sha1 CHAR(41) PRIMARY KEY," \
                            "name VARCHAR(200));";  
+
+  char *sql_create_FileIndex = "CREATE TABLE IF NOT EXISTS FileIndex(" \
+                             "id INT PRIMARY KEY," \
+                             "file CHAR(41)," \
+                             "FOREIGN KEY(file) REFERENCES File(sha1));"; 
 
   /*TODO:int大小是否会溢出，sqlite是否有自动处理*/
   /*commit 似乎是sqlite的一个关键字，不能使用*/
@@ -156,6 +162,7 @@ void GInit(){
   system("mkdir .mygit");
   create_tables();
   g_index.file_num = 0;
+  g_index.fl = NULL;
   g_status.status = 1;//init
 }
 
@@ -166,7 +173,7 @@ void GStatus(){
   }
 }
 
-static void indexAddfile(const char* name){
+static void indexAddfile(const char* name,const char* sha1){
 
   FileList *fl = malloc(sizeof(*fl));
   if(!fl){
@@ -179,6 +186,27 @@ static void indexAddfile(const char* name){
     exit(-1);
   }
   strcpy(fl->name,name);
+  strcpy(fl->sha1,sha1);
+  fl->next = NULL;
+  FileList **p = &g_index.fl;
+  while(*p) p = &(*p)->next;
+  *p = fl;
+  g_index.file_num++;
+}
+
+/*TODO:可能需要一个守护进程保存必要的信息避免频繁访问db*/
+static void GetIndexFromDB(){
+}
+
+static void index2DB(){
+
+  FileList *p = g_index.fl;
+  printf("num:%d\n",g_index.file_num);
+  while(p){
+    assert(p->name);
+    printf("name:%s,sha1:%s\n",p->name,p->sha1);
+    p = p->next;
+  }
 }
 
 void GAdd(const char** file,int num){
@@ -191,26 +219,28 @@ void GAdd(const char** file,int num){
     }
     FileList *plist = g_index.fl;
     int j= 0;
-    while(plist || j++ != g_index.file_num){
-      if(strcmp(file_sha1,plist->sha1) == 0)
+    while(plist && j++ != g_index.file_num){
+      assert(plist->name);
+      if(strcmp(*(file+i),plist->name) == 0)
         break;
+      plist = plist->next;
     }
 
     if(j == g_index.file_num){
       /*index not finded the file,add*/
-      indexAddfile(*(file+i));
+      indexAddfile(*(file+i),file_sha1);
     }else{
       /*index finded the file*/
-      if(strcmp(plist->name,*(file+i)) == 0){
+      if(strcmp(plist->sha1,file_sha1) == 0){
         printf("file:%s exists\n",*(file+i));
         continue;
       }else{
-        indexAddfile(*(file+i));
+        indexAddfile(*(file+i),file_sha1);
         /*add file*/
       }
-
     }
   }
+  index2DB();
 }
 
 
