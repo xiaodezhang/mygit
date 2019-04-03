@@ -58,7 +58,7 @@ static int file2sha1(const char* fileName,char *sha1Buffer){
   return 0;
 }
 
-static int exec_sql(char*);
+static int exec_sql(const char*);
 
 static int callback(void *NotUsed, int argc, char **argv, char **azColName){
   int i;
@@ -81,10 +81,11 @@ void create_tables(){
                            "sha1 CHAR(41) PRIMARY KEY," \
                            "name VARCHAR(200));";  
 
+  /*index实际上是只有一份的，这边更加类似于一个配置*/
   char *sql_create_FileIndex = "CREATE TABLE IF NOT EXISTS FileIndex(" \
                              "id INT PRIMARY KEY," \
                              "file CHAR(41)," \
-                             "FOREIGN KEY(file) REFERENCES File(sha1));"; 
+                             "FOREIGN KEY(file) REFERENCES File(sha1));";
 
   /*TODO:int大小是否会溢出，sqlite是否有自动处理*/
   /*commit 似乎是sqlite的一个关键字，不能使用*/
@@ -131,7 +132,7 @@ void create_tables(){
  *return:0 success
  *param:sql语句
 ***********************************************************************/
-static int exec_sql(char *sql_s){
+static int exec_sql(const char *sql_s){
 
   sqlite3 *db;
   char *zErrMsg = 0;
@@ -149,7 +150,6 @@ static int exec_sql(char *sql_s){
     sqlite3_free(zErrMsg);
   }
   sqlite3_close(db);
- 
 }
 
 void GHelp(){
@@ -196,17 +196,47 @@ static void indexAddfile(const char* name,const char* sha1){
 
 /*TODO:可能需要一个守护进程保存必要的信息避免频繁访问db*/
 static void GetIndexFromDB(){
+
+  const char *sql_get_index = "SELECT File.sha1,File.name From FileIndex " \
+                               "JOIN FileIndex ON FileIndex.file = File.sha1";
+  exec_sql(sql_get_index);
 }
 
+/*TODO:这些查询语句需要包装*,这里的代码完全只是测试*/
 static void index2DB(){
 
   FileList *p = g_index.fl;
+#define MAX_INSERT_FILE_NUM 100
+/*TODO:这个值应该是可以在其他地方获得多平台定义值的*/
+#define MAX_FILE_INSERT_LENGTH 256
   printf("num:%d\n",g_index.file_num);
+
+  char* sql_insert = malloc(MAX_FILE_INSERT_LENGTH*MAX_INSERT_FILE_NUM);
+  char* sql_insert_single = malloc(MAX_FILE_INSERT_LENGTH);
+  if(!sql_insert || !sql_insert_single){
+    perror(NULL);
+    exit(-1);
+  }
+  strcpy(sql_insert,"INSERT INTO File(sha1,name) VALUES ");
+
+  for(int i = 0;i < g_index.file_num;++i){
+    assert(p);
+    if(i != g_index.file_num-1)
+      sprintf(sql_insert_single,"(\"%s\",\"%s\"),",p->sha1,p->name);
+    else
+      sprintf(sql_insert_single,"(\"%s\",\"%s\");",p->sha1,p->name);
+    strcat(sql_insert,sql_insert_single);
+    p = p->next;
+  }
+  printf("%s\n",sql_insert);
+  exec_sql(sql_insert);
+#if 0
   while(p){
     assert(p->name);
     printf("name:%s,sha1:%s\n",p->name,p->sha1);
     p = p->next;
   }
+#endif
 }
 
 void GAdd(const char** file,int num){

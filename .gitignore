@@ -387,3 +387,6 @@ record.txt
 object_declar.c
 *.db
 mygit
+GPATH
+GRTAGS
+GTAGS
