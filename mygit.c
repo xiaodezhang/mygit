@@ -83,8 +83,7 @@ void create_tables(){
 
   /*index实际上是只有一份的，这边更加类似于一个配置*/
   char *sql_create_FileIndex = "CREATE TABLE IF NOT EXISTS FileIndex(" \
-                             "id INT PRIMARY KEY," \
-                             "file CHAR(41)," \
+                             "file CHAR(41) PRIMARY KEY," \
                              "FOREIGN KEY(file) REFERENCES File(sha1));";
 
   /*TODO:int大小是否会溢出，sqlite是否有自动处理*/
@@ -155,6 +154,7 @@ static int exec_sql(const char *sql_s){
 void GHelp(){
   printf("help!help!");
 }
+
 
 void GInit(){
 
@@ -228,15 +228,24 @@ static void index2DB(){
     strcat(sql_insert,sql_insert_single);
     p = p->next;
   }
-  printf("%s\n",sql_insert);
+  /*printf("%s\n",sql_insert);*/
   exec_sql(sql_insert);
-#if 0
-  while(p){
-    assert(p->name);
-    printf("name:%s,sha1:%s\n",p->name,p->sha1);
+
+  strcpy(sql_insert,"INSERT INTO FileIndex(file) VALUES ");
+  for(int i = 0;i < g_index.file_num;++i){
+    assert(p);
+    if(i != g_index.file_num-1)
+      sprintf(sql_insert_single,"(\"%s\"),",p->sha1);
+    else
+      sprintf(sql_insert_single,"(\"%s\"),",p->sha1);
+    strcat(sql_insert,sql_insert_single);
     p = p->next;
   }
-#endif
+  printf("%s\n",sql_insert);
+  exec_sql(sql_insert);
+
+  free(sql_insert);
+  free(sql_insert_single);
 }
 
 void GAdd(const char** file,int num){
