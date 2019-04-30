@@ -6,10 +6,15 @@
 #include<dirent.h>
 #include"sha1.h"
 #include<assert.h>
+#include<errno.h>
+#include<unistd.h>
 
-#define DBNAME "test.db"
+#define MYGITRES ".mygit"
+#define DBNAME   "mygit.db"
+#define MYGITDB MYGITRES "/" DBNAME
 Respo g_respo;
 Index g_index;
+/*it seems to get the status from index*/
 Status g_status;
 
 static int file2sha1(const char* fileName,char *sha1Buffer){
@@ -60,7 +65,7 @@ static int file2sha1(const char* fileName,char *sha1Buffer){
 
 static int exec_sql(const char*);
 
-static int callback(void *NotUsed, int argc, char **argv, char **azColName){
+static int getindex_callback(void *NotUsed, int argc, char **argv, char **azColName){
   int i;
   for(i=0; i<argc; i++){
     printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
@@ -72,7 +77,39 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 /*git中HEAD指向branch或者commit,这里是否需要修改*/
 void *HEAD;
 
-/*pragma table_inf(table_name); will show the table struct*/
+/*we should use a chart tool for these tables,only for convience
+File:
+|------+------|
+| sha1 | name |
+|------+------|
+
+FileIndex:          
+| ------ |
+| file   |
+|--------|
+
+GCommit:
+|----+---------|
+| id | pCommit |
+|----+---------|
+
+FileCommit:
+|----+------+---------|
+| id | file | gCommit |
+|----+------+---------|
+
+Branch:
+|----+---------|
+| id | gCommit |
+|----+---------|
+
+Tag:
+|----+---------|
+| id | gCommit |
+|----+---------|
+pragma table_inf(table_name); will show the table struct in sqlite*/
+/* TODO:我们用到的sql很少，只做简单的封装，否则，我们可能需要其他工具语言的帮助做
+ * 一些更易使用的接口 * <11-04-19> */
 void create_tables(){
 
   char* sql_s;
@@ -108,15 +145,16 @@ void create_tables(){
                              "id INT PRIMARY KEY," \
                              "gCommit INT);";
 
-  sql_s = malloc(strlen(sql_create_File)+strlen(sql_create_GCommit)+
-      strlen(sql_create_FileCommit)+strlen(sql_create_Branch)+
-      strlen(sql_create_Tag)+ 1);
+  sql_s = malloc(strlen(sql_create_File)+strlen(sql_create_FileIndex)+
+      strlen(sql_create_GCommit)+ strlen(sql_create_FileCommit)
+      +strlen(sql_create_Branch)+ strlen(sql_create_Tag)+ 1);
   if(!sql_s){
     printf("malloc for create tables sql error\n");
     return;
   }
   sql_s[0] = '\0';
   strcat(sql_s,sql_create_File);
+  strcat(sql_s,sql_create_FileIndex);
   strcat(sql_s,sql_create_GCommit);
   strcat(sql_s,sql_create_FileCommit);
   strcat(sql_s,sql_create_Branch);
@@ -137,7 +175,7 @@ static int exec_sql(const char *sql_s){
   char *zErrMsg = 0;
   int rc;
 
-  rc = sqlite3_open(DBNAME, &db);
+  rc = sqlite3_open(MYGITDB, &db);
   if( rc ){
     fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
@@ -153,6 +191,7 @@ static int exec_sql(const char *sql_s){
 
 void GHelp(){
   printf("help!help!");
+  exit(0);
 }
 
 
@@ -163,15 +202,9 @@ void GInit(){
   create_tables();
   g_index.file_num = 0;
   g_index.fl = NULL;
-  g_status.status = 1;//init
 }
 
-void GStatus(){
-  if(!g_status.status){
-    printf("not a mygit respo\n");
-    return;
-  }
-}
+
 
 static void indexAddfile(const char* name,const char* sha1){
 
@@ -199,7 +232,24 @@ static void GetIndexFromDB(){
 
   const char *sql_get_index = "SELECT File.sha1,File.name From FileIndex " \
                                "JOIN FileIndex ON FileIndex.file = File.sha1";
-  exec_sql(sql_get_index);
+  sqlite3 *db;
+  char *zErrMsg = 0;
+  int rc;
+
+  rc = sqlite3_open(MYGITDB, &db);
+  if( rc ){
+    fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+  }
+  rc = sqlite3_exec(db,sql_get_index,getindex_callback, 0, &zErrMsg);
+  if( rc!=SQLITE_OK ){
+    fprintf(stderr, "SQL error: %s\n", zErrMsg);
+    sqlite3_free(zErrMsg);
+  }
+  sqlite3_close(db);
+}
+
+static void is_git_reo(){
 }
 
 /*TODO:这些查询语句需要包装*,这里的代码完全只是测试*/
@@ -274,15 +324,40 @@ void GAdd(const char** file,int num){
         printf("file:%s exists\n",*(file+i));
         continue;
       }else{
-        indexAddfile(*(file+i),file_sha1);
         /*add file*/
+        indexAddfile(*(file+i),file_sha1);
       }
     }
   }
   index2DB();
+  /* TODO:release sources  <11-04-19> */
 }
 
+void GStatus(){
 
+  DIR* dir = opendir(".mygit");
+  if(dir){
+    /*directory exists*/
+    closedir(dir);
+
+    /* TODO:catch the errno  <11-04-19> */
+    printf("%s\n",MYGITDB);
+    if(access(MYGITDB,F_OK) == 0){
+      /*db exists*/
+      GetIndexFromDB();
+    }else{
+      printf("The database does not exist,mygit resposity was broken\n");
+      exit(-1);
+    }
+  }else if(ENOENT == errno){
+    /*directory does not exist*/
+    printf("not a mygit resposity,use mygit init first\n");
+  }else{
+    /*opendir() failed for some other reason*/
+    printf("opendir error\n");
+    exit(-1);
+  }
+}
 
 /*TODO:命令处理需要修改，但是我们先看看效果吧*/
 int main(int argc, char **argv){
