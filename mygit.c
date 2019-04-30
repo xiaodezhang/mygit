@@ -342,6 +342,9 @@ void GStatus(){
 
     /* TODO:catch the errno  <11-04-19> */
     printf("%s\n",MYGITDB);
+
+    /*! TODO: befor we aceess the datebase,check the resposities and files.
+     */
     if(access(MYGITDB,F_OK) == 0){
       /*db exists*/
       GetIndexFromDB();
@@ -359,6 +362,10 @@ void GStatus(){
   }
 }
 
+void Gdelete(){
+  system("rm -rf .mygit");
+}
+
 /*TODO:命令处理需要修改，但是我们先看看效果吧*/
 int main(int argc, char **argv){
 
@@ -374,6 +381,11 @@ int main(int argc, char **argv){
   }
   if(strcmp(argv[1],"add") == 0){
     GAdd((const char**)argv+2,argc-2);
+    return 0;
+  }
+
+  if(strcmp(argv[1],"delete") == 0){
+    Gdelete((const char**)argv+2,argc-2);
     return 0;
   }
 
