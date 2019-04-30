@@ -1,3 +1,5 @@
+/*note:git use the compressed files' sha1,not origin ones.*/
+
 #include <stdio.h>
 #include "sqlite3.h"
 #include<string.h>
@@ -8,6 +10,7 @@
 #include<assert.h>
 #include<errno.h>
 #include<unistd.h>
+#include<sys/stat.h>
 
 #define MYGITRES ".mygit"
 #define DBNAME   "mygit.db"
@@ -335,6 +338,53 @@ void GAdd(const char** file,int num){
   /* TODO:release sources  <11-04-19> */
 }
 
+void get_files_depth(const char* path){
+
+  DIR* dir; 
+  struct dirent *entry;
+  struct stat st;
+
+  if((dir = opendir(path))){
+      while((entry = readdir(dir))){
+        char file_withd[1024];
+        snprintf(file_withd,sizeof(file_withd),"%s/%s",path,entry->d_name);
+#if _linux_
+        if(DT_REG == entry->d_type){
+          printf("reg:%s\n",file_withd);
+        }
+        if(DT_DIR == entry->d_type){
+          printf("entry:%s\n",file_withd);
+          if(strcmp(entry->d_name,".") != 0 
+              && strcmp(entry->d_name,"..") != 0)
+            get_files_depth(file_withd);
+        }
+#else
+        if(stat(file_withd,&st) == -1){
+          perror("stat");
+          return;
+        }
+        if(S_ISREG(st.st_mode)){
+          printf("reg:%s\n",file_withd);
+        }
+        if(S_ISDIR(st.st_mode)){
+          printf("entry:%s\n",file_withd);
+          if(strcmp(entry->d_name,".") != 0 
+              && strcmp(entry->d_name,"..") != 0)
+            get_files_depth(file_withd);
+        }
+#endif
+      }
+      closedir(dir);
+  }else{
+    perror("opendir");
+  }
+}
+
+void check_working_path(){
+
+  get_files_depth(".");
+}
+
 void GStatus(){
 
   DIR* dir = opendir(".mygit");
@@ -343,10 +393,11 @@ void GStatus(){
     closedir(dir);
 
     /* TODO:catch the errno  <11-04-19> */
-    printf("%s\n",MYGITDB);
+    /*printf("%s\n",MYGITDB);*/
 
     /*! TODO: befor we aceess the datebase,check the resposities and files.
      */
+    check_working_path();
     if(access(MYGITDB,F_OK) == 0){
       /*db exists*/
       GetIndexFromDB();
@@ -368,6 +419,14 @@ void Gdelete(){
   system("rm -rf .mygit");
 }
 
+void GCommit(const char** file,int num){
+
+  /*check the respositis status first.*/
+
+  /*add all stage files to database.*/
+  /*copy all stage files to database file path*/
+}
+
 /*TODO:命令处理需要修改，但是我们先看看效果吧*/
 int main(int argc, char **argv){
 
@@ -387,7 +446,12 @@ int main(int argc, char **argv){
   }
 
   if(strcmp(argv[1],"delete") == 0){
-    Gdelete((const char**)argv+2,argc-2);
+    Gdelete();
+    return 0;
+  }
+
+  if(strcmp(argv[1],"commit") == 0){
+    GCommit((const char**)argv+2,argc-2);
     return 0;
   }
 
