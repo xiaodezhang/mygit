@@ -108,6 +108,7 @@ Tag:
 | id | gCommit |
 |----+---------|
 pragma table_inf(table_name); will show the table struct in sqlite*/
+
 /* TODO:我们用到的sql很少，只做简单的封装，否则，我们可能需要其他工具语言的帮助做
  * 一些更易使用的接口 * <11-04-19> */
 void create_tables(){
@@ -230,7 +231,7 @@ static void indexAddfile(const char* name,const char* sha1){
 /*TODO:可能需要一个守护进程保存必要的信息避免频繁访问db*/
 static void GetIndexFromDB(){
 
-  const char *sql_get_index = "SELECT File.sha1,File.name From FileIndex " \
+  const char *sql_get_index = "SELECT File.sha1,File.name From File " \
                                "JOIN FileIndex ON FileIndex.file = File.sha1";
   sqlite3 *db;
   char *zErrMsg = 0;
@@ -282,16 +283,17 @@ static void index2DB(){
   exec_sql(sql_insert);
 
   strcpy(sql_insert,"INSERT INTO FileIndex(file) VALUES ");
+  p = g_index.fl;
   for(int i = 0;i < g_index.file_num;++i){
     assert(p);
     if(i != g_index.file_num-1)
       sprintf(sql_insert_single,"(\"%s\"),",p->sha1);
     else
-      sprintf(sql_insert_single,"(\"%s\"),",p->sha1);
+      sprintf(sql_insert_single,"(\"%s\");",p->sha1);
     strcat(sql_insert,sql_insert_single);
     p = p->next;
   }
-  printf("%s\n",sql_insert);
+  /*printf("%s\n",sql_insert);*/
   exec_sql(sql_insert);
 
   free(sql_insert);
